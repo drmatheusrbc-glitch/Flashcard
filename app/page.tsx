@@ -125,44 +125,90 @@ export default function HomePage() {
       return;
     }
 
+    const selectedFiles: Array<{ kind: 'examPdf' | 'answerKeyPdf' | 'summaryPdf' | 'imageFile'; file: File }> = [];
+    if (inputMode === 'exam') {
+      if (examPdf) selectedFiles.push({ kind: 'examPdf', file: examPdf });
+      if (answerKeyPdf) selectedFiles.push({ kind: 'answerKeyPdf', file: answerKeyPdf });
+    } else if (inputMode === 'summary') {
+      if (summaryPdf) selectedFiles.push({ kind: 'summaryPdf', file: summaryPdf });
+    } else if (imageFile) {
+      selectedFiles.push({ kind: 'imageFile', file: imageFile });
+    }
+
+    const maxSize = (kind: string) => kind === 'imageFile' ? 8 * 1024 * 1024 : 20 * 1024 * 1024;
+    for (const item of selectedFiles) {
+      if (item.file.size <= 0 || item.file.size > maxSize(item.kind)) {
+        setFormError(`O arquivo "${item.file.name}" está vazio ou excede o limite de ${item.kind === 'imageFile' ? '8MB' : '20MB'}.`);
+        return;
+      }
+    }
+
     setIsProcessing(true);
     setEventHistory([]);
     setCurrentEvent({
       stage: 'compreensao',
       stageIndex: 1,
       totalStages: 8,
-      label: 'Analisando documento',
-      detail: 'Enviando material para processamento estruturado...',
+      label: 'Preparando arquivos',
+      detail: 'Enviando os arquivos diretamente ao armazenamento seguro...',
     });
 
     try {
-      const formData = new FormData();
-      const parsedTarget = targetCount.trim() ? parseInt(targetCount.trim(), 10) : undefined;
-      formData.append(
-        'config',
-        JSON.stringify({
-          inputMode,
-          title: deckTitle.trim() || undefined,
-          targetCount: parsedTarget && !Number.isNaN(parsedTarget) ? parsedTarget : undefined,
-          depth,
-          language,
-          formatPreference,
-        })
-      );
+      const files: Record<string, string> = {};
+      const fileNames: Record<string, string> = {};
 
-      if (inputMode === 'exam') {
-        if (examPdf) formData.append('examPdf', examPdf);
-        if (answerKeyPdf) formData.append('answerKeyPdf', answerKeyPdf);
-      } else if (inputMode === 'summary') {
-        if (summaryPdf) formData.append('summaryPdf', summaryPdf);
-      } else {
-        formData.append('textContent', textContent);
-        if (imageFile) formData.append('imageFile', imageFile);
+      for (const item of selectedFiles) {
+        const urlResponse = await fetch('/api/blob/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kind: item.kind,
+            fileName: item.file.name,
+            contentType: item.file.type || (item.kind === 'imageFile' ? '' : 'application/pdf'),
+            size: item.file.size,
+          }),
+        });
+        const urlData = await urlResponse.json();
+        if (!urlResponse.ok) throw new Error(urlData.error || 'Não foi possível preparar o envio do arquivo.');
+
+        const uploadResponse = await fetch(urlData.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': item.file.type || (item.kind === 'imageFile' ? '' : 'application/pdf') },
+          body: item.file,
+        });
+        if (!uploadResponse.ok) {
+          const detail = await uploadResponse.text().catch(() => '');
+          throw new Error(`Falha no upload de "${item.file.name}" (HTTP ${uploadResponse.status}). ${detail.slice(0, 240)}`);
+        }
+        files[item.kind] = urlData.pathname;
+        fileNames[item.kind] = item.file.name;
       }
 
+      setCurrentEvent({
+        stage: 'compreensao',
+        stageIndex: 1,
+        totalStages: 8,
+        label: 'Analisando documento',
+        detail: 'Arquivos enviados. Iniciando a geração dos flashcards...',
+      });
+
+      const parsedTarget = targetCount.trim() ? parseInt(targetCount.trim(), 10) : undefined;
       const response = await fetch('/api/generate', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: {
+            inputMode,
+            title: deckTitle.trim() || undefined,
+            targetCount: parsedTarget && !Number.isNaN(parsedTarget) ? parsedTarget : undefined,
+            depth,
+            language,
+            formatPreference,
+          },
+          textContent: inputMode === 'text' ? textContent : '',
+          files,
+          fileNames,
+        }),
       });
 
       if (!response.ok || !response.body) {
@@ -177,21 +223,19 @@ export default function HomePage() {
           }
         }
         const statusInfo = `HTTP ${response.status}${response.statusText ? ` — ${response.statusText}` : ''}`;
-        throw new Error(serverMessage ? `${statusInfo}: ${serverMessage}` : `${statusInfo}: O servidor não retornou detalhes. Verifique os logs da função na Vercel.`);
+        throw new Error(serverMessage ? `${statusInfo}: ${serverMessage}` : `${statusInfo}: O servidor não retornou detalhes.`);
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-
       let finished = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
+        const parts = buffer.split('\\n\\n');
         buffer = parts.pop() || '';
-
         for (const chunk of parts) {
           const line = chunk.trim();
           if (!line.startsWith('data:')) continue;
@@ -200,21 +244,17 @@ export default function HomePage() {
           const evt = JSON.parse(jsonStr) as PipelineProgressEvent;
           setCurrentEvent(evt);
           setEventHistory((prev) => [...prev, evt]);
-
           if (evt.error) {
             finished = true;
           } else if (evt.completed && evt.deck) {
             finished = true;
             setActiveDeck(evt.deck);
             setIsProcessing(false);
-            loadWorkspaceData();
+            void loadWorkspaceData();
           }
         }
       }
-
-      if (!finished) {
-        throw new Error('A conexão com o servidor foi encerrada antes da conclusão. Tente novamente.');
-      }
+      if (!finished) throw new Error('A conexão com o servidor foi encerrada antes da conclusão. Tente novamente.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro durante a geração dos flashcards.';
       setCurrentEvent((prev) => ({
