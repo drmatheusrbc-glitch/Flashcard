@@ -1,10 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import crypto from 'node:crypto';
 import { cookies } from 'next/headers';
 import type { Deck, Flashcard, UserSession } from './types';
 
-const DATA_ROOT = path.join(process.cwd(), '.data', 'workspaces');
+// Temporary storage for serverless environments such as Vercel. Contents are ephemeral.
+const DATA_ROOT = path.join(tmpdir(), 'cardexis', 'workspaces');
 const SESSION_COOKIE = 'cardexis_session';
 
 function sanitizeId(raw: string): string {
