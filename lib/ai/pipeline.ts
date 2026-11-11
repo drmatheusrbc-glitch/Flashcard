@@ -465,7 +465,17 @@ Retorne APENAS um JSON válido com a estrutura:
   const hasImage = Boolean(input.imageBase64 && input.imageMimeType);
 
   const rawCards: RawGeneratedCard[] = [];
-  for (const batch of batches) {
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex];
+    if (isExam) {
+      onProgress({
+        stage: 'elaboracao',
+        stageIndex: 5,
+        totalStages: 8,
+        label: `Analisando questão ${batchIndex + 1} de ${batches.length}`,
+        detail: `Processamento individual de ${batch.label}. Cada questão será tratada separadamente para evitar omissões.`,
+      });
+    }
     const formatRule =
       config.formatPreference === 'tradicional'
         ? 'Crie APENAS cartões tradicionais (frente e verso).'
@@ -599,8 +609,8 @@ ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
   if (isExam) {
     const generatedNumbers = new Set(rawCards.map((card) => card.questionNumber).filter((value): value is string => Boolean(value)));
     const missingQuestions = (comprehension.examQuestions || []).filter((question) => !generatedNumbers.has(question.questionNumber));
-    for (let i = 0; i < missingQuestions.length; i += 5) {
-      const repairBatch = missingQuestions.slice(i, i + 5);
+    for (let i = 0; i < missingQuestions.length; i += 1) {
+      const repairBatch = missingQuestions.slice(i, i + 1);
       const repairPrompt = `Você é um elaborador especialista em flashcards e raciocínio de prova.
 A primeira geração deixou estas questões sem nenhum cartão. Corrija exclusivamente essas lacunas.
 Para cada questão, crie pelo menos UM cartão que ensine o princípio central cobrado: decisão exigida, pista decisiva do enunciado, mecanismo/critério e justificativa do gabarito. Evite cartões superficiais que apenas nomeiem o assunto.
