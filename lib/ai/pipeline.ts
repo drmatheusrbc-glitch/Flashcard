@@ -806,8 +806,15 @@ ${rawCards.map((c, idx) => `[${idx}] (${c.modality} | ${c.importance} | ${c.subj
   const coveredQuestionNumbers = new Set(finalCards.map((card) => card.questionNumber).filter((value): value is string => Boolean(value)));
   const allQuestionNumbers = (comprehension.examQuestions || []).map((question) => question.questionNumber);
   const missingQuestions = isExam ? allQuestionNumbers.filter((number) => !coveredQuestionNumbers.has(number)) : [];
-  const questionCoverage = isExam ? ` Questões com cartão associado: ${coveredQuestionNumbers.size}/${allQuestionNumbers.length}.${missingQuestions.length ? ` Sem cartão associado: ${missingQuestions.join(', ')}.` : ' Todas as questões identificadas foram associadas a cartões.'}` : '';
-  const coverageReport = `${finalCards.length} flashcards aprovados cobrindo ${coveredThemesCount} de ${knowledgeMap.length} tema(s) principais em ${comprehension.detectedDomain}.${questionCoverage}`;
+  const questionCoverage = isExam
+    ? ` Questões identificadas e analisadas: ${allQuestionNumbers.length}. Questões com pelo menos um flashcard: ${coveredQuestionNumbers.size}/${allQuestionNumbers.length}.` +
+      (missingQuestions.length
+        ? ` Questões identificadas sem cartão: ${missingQuestions.join(', ')}.`
+        : allQuestionNumbers.length > 0
+          ? ' Todas as questões identificadas receberam pelo menos um cartão.'
+          : ' Não foi possível identificar questões no documento.')
+    : '';
+  const coverageReport = `${finalCards.length} flashcards aprovados gerados. ${coveredThemesCount} de ${knowledgeMap.length} tema(s) principais cobertos em ${comprehension.detectedDomain}.${questionCoverage}`;
 
   // =========================================================================
   // ETAPA 8 — FINALIZAÇÃO
