@@ -48,6 +48,7 @@ export async function POST(request: Request) {
       validUntil,
       maximumSizeInBytes: maxBytes,
       allowedContentTypes: [contentType],
+      ttlDays: 1,
       access: 'private',
     });
 
