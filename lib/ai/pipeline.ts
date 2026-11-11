@@ -210,7 +210,23 @@ ${
 
 Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações científicas/normativas que precisam de verificação de atualidade (keyFactsToVerify).`;
 
-  const comprehensionRes = await generateWithFallback({
+  const comprehensionRes = isExam
+    ? {
+        text: JSON.stringify({
+          suggestedTitle: config.title || 'Prova — Flashcards',
+          detectedDomain: 'Conteúdo da prova',
+          structuralSummary: 'Inventário de questões extraído diretamente do PDF.',
+          expectedQuestionCount: 0,
+          examQuestions: [],
+          themes: [{
+            theme: 'Conceitos cobrados na prova',
+            subtopics: [],
+            estimatedWeight: 'alto',
+            keyFactsToVerify: [],
+          }],
+        }),
+      }
+    : await generateWithFallback({
       contents: { parts: buildContentParts(input, comprehensionPrompt) },
       config: {
         thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
