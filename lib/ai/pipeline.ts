@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { ThinkingLevel, Type } from '@google/genai';
 import { generateWithFallback, MultimodalInputPart } from './client';
+import { extractExamFromPdf } from './pdf-extraction';
 import type {
   BibliographicReference,
   CardImportance,
@@ -263,58 +264,43 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
     themes: [{ theme: 'Conteúdo Principal', subtopics: [], estimatedWeight: 'alto', keyFactsToVerify: [] }],
   });
 
-  // Segunda leitura independente em faixas numéricas. A leitura única do PDF
-  // costuma truncar inventários longos; estas passagens recuperam questões omitidas.
+  // Extração determinística do PDF: o modelo não decide quantas questões existem.
+  // O texto integral é separado pela numeração impressa e cada questão vira uma unidade.
   if (isExam && input.examPdfBase64) {
-    const scanLimit = Math.max(100, Number(comprehension.expectedQuestionCount) || 0);
-    const ranges = Array.from({ length: Math.ceil(scanLimit / 10) }, (_, index) => ({
-      start: index * 10 + 1,
-      end: Math.min((index + 1) * 10, scanLimit),
-    }));
-    const recovered = [...(comprehension.examQuestions || [])];
-    for (const range of ranges) {
-      const inventoryPrompt = `Faça uma varredura EXCLUSIVA no PDF da prova para localizar questões numeradas de ${range.start} a ${range.end}, inclusive. Não resuma a prova inteira. Extraia todas as questões legíveis desse intervalo, mesmo que estejam em páginas diferentes. Preserve o número original. Não invente questões e não inclua números fora do intervalo. Para cada questão retorne questionNumber, topic, stemSummary, officialAnswer, coreConcept e commonTrap. Se o gabarito não estiver disponível, officialAnswer deve ser "Não identificado no material". Retorne JSON válido: {"examQuestions":[...]}. Idioma: ${config.language}.`;
-      try {
-        const scan = await generateWithFallback({
-          contents: { parts: buildContentParts(input, inventoryPrompt) },
-          config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
-        });
-        const parsed = safeParseJson<{ examQuestions?: ComprehensionResult['examQuestions'] }>(
-          scan.text,
-          { examQuestions: [] }
-        );
-        for (const question of parsed.examQuestions || []) {
-          if (!question.questionNumber) continue;
-          const key = question.questionNumber.trim().replace(/^0+/, '').toLowerCase();
-          const existing = recovered.find((item) =>
-            item.questionNumber.trim().replace(/^0+/, '').toLowerCase() === key
-          );
-          if (!existing) recovered.push(question);
-          else if (existing.stemSummary.length < question.stemSummary.length) Object.assign(existing, question);
-        }
-      } catch (error) {
-        console.warn(`Falha na varredura complementar das questões ${range.start}–${range.end}:`, error);
-      }
+    const extractedExam = await extractExamFromPdf(input.examPdfBase64);
+    const extractedQuestions = extractedExam.questions;
+    if (extractedQuestions.length === 0) {
+      throw new Error('Não foi possível extrair texto das questões do PDF. O arquivo pode ser digitalizado como imagem; envie uma versão com OCR ou texto selecionável.');
     }
-    recovered.sort((a, b) => {
-      const na = Number(a.questionNumber), nb = Number(b.questionNumber);
-      return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : a.questionNumber.localeCompare(b.questionNumber, 'pt-BR');
-    });
-    comprehension.examQuestions = recovered;
 
-    // Se o próprio documento foi identificado como uma prova numerada,
-    // não prossiga silenciosamente quando houver lacunas no inventário.
     const expectedCount = Number(comprehension.expectedQuestionCount || 0);
-    if (Number.isInteger(expectedCount) && expectedCount > 0) {
-      const foundNumbers = new Set(recovered.map((q) => Number(q.questionNumber)).filter((n) => Number.isInteger(n) && n > 0));
-      const missingFromInventory = Array.from({ length: expectedCount }, (_, index) => index + 1)
-        .filter((number) => !foundNumbers.has(number));
-      if (missingFromInventory.length > 0) {
-        throw new Error(
-          `Inventário incompleto: o documento indica ${expectedCount} questões, mas ${recovered.length} foram identificadas. Não iniciarei a criação dos flashcards até recuperar as questões: ${missingFromInventory.map((n) => `Q${n}`).join(', ')}. Verifique se o PDF está completo e legível.`
-        );
-      }
+    const detectedNumbers = new Set(extractedQuestions.map((q) => Number(q.questionNumber)));
+    const inferredCount = Math.max(...detectedNumbers);
+    const requiredCount = expectedCount > 0 ? expectedCount : inferredCount;
+    const missingNumbers = Array.from({ length: requiredCount }, (_, index) => index + 1)
+      .filter((number) => !detectedNumbers.has(number));
+    if (missingNumbers.length > 0) {
+      throw new Error(
+        `Extração incompleta do PDF: ${extractedQuestions.length} questões extraídas em ${extractedExam.pageCount} páginas; faltam Q${missingNumbers.join(', Q')}. A geração foi interrompida para evitar omissões.`
+      );
     }
+
+    comprehension.expectedQuestionCount = requiredCount;
+    comprehension.examQuestions = extractedQuestions.map((question) => ({
+      questionNumber: question.questionNumber,
+      topic: 'Tema a ser identificado na análise individual',
+      stemSummary: question.text,
+      officialAnswer: question.officialAnswer,
+      coreConcept: 'Identificar a partir do enunciado completo',
+      commonTrap: '',
+    }));
+    onProgress({
+      stage: 'compreensao',
+      stageIndex: 1,
+      totalStages: 8,
+      label: 'Questões extraídas e conferidas',
+      detail: `${extractedQuestions.length}/${requiredCount} questões extraídas de ${extractedExam.pageCount} páginas. Gabarito localizado para ${extractedExam.answerKeyFound} questão(ões). Cada questão será analisada individualmente.`,
+    });
   }
 
   // =========================================================================
