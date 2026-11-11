@@ -553,6 +553,66 @@ ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
     }
   }
 
+  // Segunda passagem de cobertura: se algum número do inventário não recebeu cartão,
+  // gera-se um cartão direcionado antes da auditoria final.
+  if (isExam) {
+    const generatedNumbers = new Set(rawCards.map((card) => card.questionNumber).filter((value): value is string => Boolean(value)));
+    const missingQuestions = (comprehension.examQuestions || []).filter((question) => !generatedNumbers.has(question.questionNumber));
+    for (let i = 0; i < missingQuestions.length; i += 5) {
+      const repairBatch = missingQuestions.slice(i, i + 5);
+      const repairPrompt = `Você é um elaborador especialista em flashcards e raciocínio de prova.
+A primeira geração deixou estas questões sem nenhum cartão. Corrija exclusivamente essas lacunas.
+Para cada questão, crie pelo menos UM cartão que ensine o princípio central cobrado: decisão exigida, pista decisiva do enunciado, mecanismo/critério e justificativa do gabarito. Evite cartões superficiais que apenas nomeiem o assunto.
+Preserve exatamente o número da questão em questionNumber. Não invente dados não presentes no material. Respostas em ${config.language}; profundidade ${config.depth}.
+QUESTÕES A REPARAR:
+${repairBatch.map((q) => `Q${q.questionNumber} | ${q.topic} | Enunciado: ${q.stemSummary} | Gabarito: ${q.officialAnswer} | Conceito central: ${q.coreConcept} | Pegadinha: ${q.commonTrap || 'não identificada'}`).join('\n')}
+Retorne JSON com cards. Cada cartão deve conter front, back, modality, importance, subject, subtopic, contextAnchor, isVignette, questionNumber e reference.`;
+      try {
+        const repairRes = await generateWithFallback({
+          contents: { parts: buildContentParts(input, repairPrompt) },
+          config: {
+            thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                cards: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      front: { type: Type.STRING }, back: { type: Type.STRING },
+                      modality: { type: Type.STRING }, importance: { type: Type.STRING },
+                      subject: { type: Type.STRING }, subtopic: { type: Type.STRING },
+                      contextAnchor: { type: Type.STRING }, isVignette: { type: Type.BOOLEAN },
+                      questionNumber: { type: Type.STRING },
+                      reference: {
+                        type: Type.OBJECT,
+                        properties: {
+                          authorOrInstitution: { type: Type.STRING }, title: { type: Type.STRING },
+                          sourceOrJournal: { type: Type.STRING }, year: { type: Type.STRING },
+                          identifier: { type: Type.STRING }, url: { type: Type.STRING },
+                          verified: { type: Type.BOOLEAN }, note: { type: Type.STRING },
+                        },
+                        required: ['authorOrInstitution', 'title', 'sourceOrJournal', 'year', 'verified'],
+                      },
+                    },
+                    required: ['front', 'back', 'modality', 'importance', 'subject', 'questionNumber', 'reference'],
+                  },
+                },
+              },
+              required: ['cards'],
+            },
+          },
+        });
+        const repaired = safeParseJson<{ cards: RawGeneratedCard[] }>(repairRes.text, { cards: [] });
+        rawCards.push(...(repaired.cards || []).filter((card) => repairBatch.some((q) => q.questionNumber === card.questionNumber)));
+      } catch {
+        // A falha de reparo não apaga os cartões já produzidos; a cobertura final informa a lacuna.
+      }
+    }
+  }
+
   // =========================================================================
   // ETAPA 6 — CONTROLE DE QUALIDADE (10 CRITÉRIOS)
   // =========================================================================
