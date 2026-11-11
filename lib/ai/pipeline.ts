@@ -33,6 +33,7 @@ interface ComprehensionResult {
   suggestedTitle: string;
   detectedDomain: string;
   structuralSummary: string;
+  expectedQuestionCount?: number;
   examQuestions?: Array<{
     questionNumber: string;
     topic: string;
@@ -199,7 +200,8 @@ ${
 2. Cruze cada questão com o gabarito fornecido (se houver gabarito comentado, extraia o raciocínio).
 3. Para cada questão, identifique o conceito central exigido e possíveis pegadinhas ou conceitos confundidores.
 4. A lista examQuestions deve conter UMA entrada para CADA questão legível, preservando a numeração original. Não faça amostragem nem pare nas primeiras questões.
-5. Faça conferência final da sequência numérica; informe lacunas, páginas ilegíveis ou questões não identificáveis em structuralSummary. Nunca invente questões.`
+5. Informe expectedQuestionCount com o total de questões da prova, usando a numeração e a estrutura do documento. Se não for possível determinar, use 0.
+6. Faça conferência final da sequência numérica; informe lacunas, páginas ilegíveis ou questões não identificáveis em structuralSummary. Nunca invente questões.`
     : `MODO RESUMO / TEXTO:
 1. Leia todo o documento antes de propor qualquer cartão.
 2. Construa um mapa global de conhecimentos com grandes temas, subtemas e peso relativo.`
@@ -218,6 +220,7 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
             suggestedTitle: { type: Type.STRING },
             detectedDomain: { type: Type.STRING },
             structuralSummary: { type: Type.STRING },
+            expectedQuestionCount: { type: Type.INTEGER },
             examQuestions: {
               type: Type.ARRAY,
               items: {
@@ -256,6 +259,7 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
     suggestedTitle: config.title || 'Baralho de Estudo',
     detectedDomain: 'Geral',
     structuralSummary: '',
+    expectedQuestionCount: 0,
     themes: [{ theme: 'Conteúdo Principal', subtopics: [], estimatedWeight: 'alto', keyFactsToVerify: [] }],
   });
 
@@ -296,6 +300,20 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
       return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : a.questionNumber.localeCompare(b.questionNumber, 'pt-BR');
     });
     comprehension.examQuestions = recovered;
+
+    // Se o próprio documento foi identificado como uma prova numerada,
+    // não prossiga silenciosamente quando houver lacunas no inventário.
+    const expectedCount = Number(comprehension.expectedQuestionCount || 0);
+    if (Number.isInteger(expectedCount) && expectedCount > 0) {
+      const foundNumbers = new Set(recovered.map((q) => Number(q.questionNumber)).filter((n) => Number.isInteger(n) && n > 0));
+      const missingFromInventory = Array.from({ length: expectedCount }, (_, index) => index + 1)
+        .filter((number) => !foundNumbers.has(number));
+      if (missingFromInventory.length > 0) {
+        throw new Error(
+          `Inventário incompleto: o documento indica ${expectedCount} questões, mas ${recovered.length} foram identificadas. Não iniciarei a criação dos flashcards até recuperar as questões: ${missingFromInventory.map((n) => `Q${n}`).join(', ')}. Verifique se o PDF está completo e legível.`
+        );
+      }
+    }
   }
 
   // =========================================================================
