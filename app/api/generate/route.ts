@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       files.imageFile ? blobToBase64(files.imageFile, MAX_IMAGE_BYTES, ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], 'Imagem para Oclusão') : undefined,
     ]);
 
-    const imageMimeType = files.imageFile ? (await get(files.imageFile, { access: 'private' }))?.blob.contentType : undefined;
+    const imageMimeType = files.imageFile ? (await get(files.imageFile, { access: 'private' }))?.blob.contentType ?? undefined : undefined;
     const imageDataUrl = imageBase64 && imageMimeType ? `data:${imageMimeType};base64,${imageBase64}` : undefined;
 
     const encoder = new TextEncoder();
