@@ -129,6 +129,10 @@ export function DeckViewer({ deck, onDeckUpdated, onBackToStudio }: DeckViewerPr
   const safeStudyIndex = Math.min(studyIndex, Math.max(0, filteredCards.length - 1));
   const currentCard = filteredCards[safeStudyIndex];
   const outdatedCount = deck.cards.filter((c) => c.outdatedAlert?.isOutdated).length;
+  const linkedQuestionNumbers = Array.from(new Set(
+    deck.cards.map((card) => card.questionNumber?.trim()).filter((value): value is string => Boolean(value))
+  )).sort((a, b) => Number(a) - Number(b));
+  const unlinkedQuestionCards = deck.cards.filter((card) => !card.questionNumber?.trim()).length;
 
   const openEditModal = (card: Flashcard) => {
     setEditingCard(card);
@@ -285,6 +289,13 @@ export function DeckViewer({ deck, onDeckUpdated, onBackToStudio }: DeckViewerPr
               <span>Profundidade: {deck.depth}</span>
               <span aria-hidden="true">·</span>
               <span>{deck.coverageReport}</span>
+              {deck.inputMode === 'exam' && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="font-medium text-sky-800">{linkedQuestionNumbers.length} questão(ões) representada(s) nos cartões</span>
+                  {unlinkedQuestionCards > 0 && <span className="text-amber-700">{unlinkedQuestionCards} cartão(ões) sem vínculo com questão</span>}
+                </>
+              )}
               {outdatedCount > 0 && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -592,6 +603,11 @@ export function DeckViewer({ deck, onDeckUpdated, onBackToStudio }: DeckViewerPr
 
             {/* Front / Question Area */}
             <div className="p-8 space-y-6">
+              {currentCard.questionNumber && (
+                <div className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                  <FileText className="h-3.5 w-3.5" /> Relacionado à questão {currentCard.questionNumber}
+                </div>
+              )}
               <div>
                 <p className="text-xs font-medium text-slate-500 mb-2">Frente</p>
                 {currentCard.modality === 'cloze' && currentCard.clozeText ? (
@@ -770,6 +786,11 @@ export function DeckViewer({ deck, onDeckUpdated, onBackToStudio }: DeckViewerPr
                 </div>
               </div>
 
+              {card.questionNumber && (
+                <div className="inline-flex items-center gap-1.5 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                  <FileText className="h-3.5 w-3.5" /> Questão {card.questionNumber}
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                 <div>
                   <p className="text-xs font-medium text-slate-400 mb-1">Frente</p>
