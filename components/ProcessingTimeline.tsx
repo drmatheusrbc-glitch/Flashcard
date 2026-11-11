@@ -119,6 +119,15 @@ export function ProcessingTimeline({
         })}
       </ol>
 
+      {hasError && currentEvent?.error && (
+        <div className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4" role="alert">
+          <p className="text-sm font-semibold text-red-900">Detalhes técnicos do erro</p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed text-red-800">
+            {currentEvent.error}
+          </p>
+        </div>
+      )}
+
       {hasError && (
         <div className="mt-6 pt-6 border-t border-slate-200 flex items-center justify-end gap-3">
           <button
