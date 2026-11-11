@@ -262,12 +262,10 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
   // Segunda leitura independente em faixas numéricas. A leitura única do PDF
   // costuma truncar inventários longos; estas passagens recuperam questões omitidas.
   if (isExam && input.examPdfBase64) {
-    const ranges = [
-      { start: 1, end: 25 },
-      { start: 26, end: 50 },
-      { start: 51, end: 75 },
-      { start: 76, end: 100 },
-    ];
+    const ranges = Array.from({ length: 10 }, (_, index) => ({
+      start: index * 10 + 1,
+      end: (index + 1) * 10,
+    }));
     const recovered = [...(comprehension.examQuestions || [])];
     for (const range of ranges) {
       const inventoryPrompt = `Faça uma varredura EXCLUSIVA no PDF da prova para localizar questões numeradas de ${range.start} a ${range.end}, inclusive. Não resuma a prova inteira. Extraia todas as questões legíveis desse intervalo, mesmo que estejam em páginas diferentes. Preserve o número original. Não invente questões e não inclua números fora do intervalo. Para cada questão retorne questionNumber, topic, stemSummary, officialAnswer, coreConcept e commonTrap. Se o gabarito não estiver disponível, officialAnswer deve ser "Não identificado no material". Retorne JSON válido: {"examQuestions":[...]}. Idioma: ${config.language}.`;
@@ -443,7 +441,9 @@ Retorne APENAS um JSON válido com a estrutura:
     if (questions.length === 0) {
       throw new Error('Não foi possível identificar as questões da prova com segurança. A geração foi interrompida para evitar um baralho incompleto. Tente um PDF com melhor resolução ou páginas separadas.');
     }
-    const questionsPerBatch = 5;
+    // Uma chamada por questão: evita que o modelo priorize algumas questões
+    // e omita outras dentro de lotes grandes.
+    const questionsPerBatch = 1;
     for (let i = 0; i < questions.length; i += questionsPerBatch) {
       const group = questions.slice(i, i + questionsPerBatch);
       batches.push({
@@ -848,7 +848,7 @@ ${rawCards.map((c, idx) => `[${idx}] (${c.modality} | ${c.importance} | ${c.subj
   const allQuestionNumbers = (comprehension.examQuestions || []).map((question) => question.questionNumber);
   const missingQuestions = isExam ? allQuestionNumbers.filter((number) => !coveredQuestionNumbers.has(number)) : [];
   const questionCoverage = isExam
-    ? ` Questões identificadas e analisadas: ${allQuestionNumbers.length}. Questões com pelo menos um flashcard: ${coveredQuestionNumbers.size}/${allQuestionNumbers.length}.` +
+    ? ` Questões identificadas e processadas individualmente: ${allQuestionNumbers.length}. Questões com pelo menos um flashcard: ${coveredQuestionNumbers.size}/${allQuestionNumbers.length}.` +
       (missingQuestions.length
         ? ` Questões identificadas sem cartão: ${missingQuestions.join(', ')}.`
         : allQuestionNumbers.length > 0
@@ -856,6 +856,14 @@ ${rawCards.map((c, idx) => `[${idx}] (${c.modality} | ${c.importance} | ${c.subj
           : ' Não foi possível identificar questões no documento.')
     : '';
   const coverageReport = `${finalCards.length} flashcards aprovados gerados. ${coveredThemesCount} de ${knowledgeMap.length} tema(s) principais cobertos em ${comprehension.detectedDomain}.${questionCoverage}`;
+
+  // A geração não pode ser apresentada como completa se uma questão do
+  // inventário não tiver sido representada por ao menos um cartão.
+  if (isExam && missingQuestions.length > 0) {
+    throw new Error(
+      `Análise incompleta: ${missingQuestions.length} questão(ões) identificada(s) não receberam flashcard (Q${missingQuestions.join(', Q')}). A geração foi interrompida para não apresentar uma prova parcialmente processada como completa. Tente novamente ou envie um PDF mais legível.`
+    );
+  }
 
   // =========================================================================
   // ETAPA 8 — FINALIZAÇÃO
