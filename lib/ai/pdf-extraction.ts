@@ -10,6 +10,7 @@ export interface ExtractedExam {
   pageCount: number;
   questions: ExtractedExamQuestion[];
   answerKeyFound: number;
+  answerKey: Record<string, string>;
   extractedTextLength: number;
 }
 
@@ -110,7 +111,8 @@ export async function extractExamFromPdf(base64: string): Promise<ExtractedExam>
   return {
     pageCount: pdf.numPages,
     questions: ordered,
-    answerKeyFound: [...answerKey.keys()].filter((n) => unique.has(n)).length,
+    answerKeyFound: answerKey.size,
+    answerKey: Object.fromEntries(answerKey.entries()),
     extractedTextLength: fullText.length,
   };
 }
