@@ -197,7 +197,9 @@ ${
     ? `MODO PROVA + GABARITO:
 1. Identifique e separe TODAS as questões individuais da prova.
 2. Cruze cada questão com o gabarito fornecido (se houver gabarito comentado, extraia o raciocínio).
-3. Para cada questão, identifique o conceito central exigido e possíveis pegadinhas ou conceitos confundidores.`
+3. Para cada questão, identifique o conceito central exigido e possíveis pegadinhas ou conceitos confundidores.
+4. A lista examQuestions deve conter UMA entrada para CADA questão legível, preservando a numeração original. Não faça amostragem nem pare nas primeiras questões.
+5. Faça conferência final da sequência numérica; informe lacunas, páginas ilegíveis ou questões não identificáveis em structuralSummary. Nunca invente questões.`
     : `MODO RESUMO / TEXTO:
 1. Leia todo o documento antes de propor qualquer cartão.
 2. Construa um mapa global de conhecimentos com grandes temas, subtemas e peso relativo.`
@@ -439,6 +441,8 @@ ${
     : ''
 }
 
+Em modo prova, a lista de questões identificadas deve ser tratada como inventário obrigatório. Para cada questão relevante, produza pelo menos um cartão e preencha questionNumber com o número original. Produza um segundo cartão somente quando houver outro conhecimento independente e útil. Não gere apenas cartões sobre os temas gerais e não ignore questões do inventário. Questões redundantes podem ser consolidadas, mas não descarte conhecimentos exclusivos.
+
 Temas deste lote (${batch.label}):
 ${batch.themes.map((t) => `- ${t.theme} (peso ${t.estimatedWeight}): ${t.subtopics.join(', ')}`).join('\n')}
 
@@ -549,7 +553,7 @@ ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
 2. Pergunta é objetiva?
 3. Resposta é curta e precisa?
 4. Contexto é suficiente (sem ambiguidade)?
-5. Existe redundância com outro cartão? (Se houver, remova o duplicado!)
+5. Existe redundância real com outro cartão? Remova apenas duplicatas. Em modo prova, preserve ao menos um cartão para cada questão relevante; não elimine o único cartão que representa um conhecimento exclusivo.
 6. Está cientificamente correto e atualizado?
 7. Agrega real valor ao aprendizado?
 
@@ -707,7 +711,11 @@ ${rawCards.map((c, idx) => `[${idx}] (${c.modality} | ${c.importance} | ${c.subj
   });
 
   const coveredThemesCount = knowledgeMap.filter((k) => k.coveredCards > 0).length;
-  const coverageReport = `${finalCards.length} flashcards aprovados cobrindo ${coveredThemesCount} de ${knowledgeMap.length} tema(s) principais em ${comprehension.detectedDomain}.`;
+  const coveredQuestionNumbers = new Set(finalCards.map((card) => card.questionNumber).filter((value): value is string => Boolean(value)));
+  const allQuestionNumbers = (comprehension.examQuestions || []).map((question) => question.questionNumber);
+  const missingQuestions = isExam ? allQuestionNumbers.filter((number) => !coveredQuestionNumbers.has(number)) : [];
+  const questionCoverage = isExam ? ` Questões com cartão associado: ${coveredQuestionNumbers.size}/${allQuestionNumbers.length}.${missingQuestions.length ? ` Sem cartão associado: ${missingQuestions.join(', ')}.` : ' Todas as questões identificadas foram associadas a cartões.'}` : '';
+  const coverageReport = `${finalCards.length} flashcards aprovados cobrindo ${coveredThemesCount} de ${knowledgeMap.length} tema(s) principais em ${comprehension.detectedDomain}.${questionCoverage}`;
 
   // =========================================================================
   // ETAPA 8 — FINALIZAÇÃO
