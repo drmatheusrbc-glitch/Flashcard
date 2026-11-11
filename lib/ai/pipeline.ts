@@ -266,9 +266,10 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
   // Segunda leitura independente em faixas numéricas. A leitura única do PDF
   // costuma truncar inventários longos; estas passagens recuperam questões omitidas.
   if (isExam && input.examPdfBase64) {
-    const ranges = Array.from({ length: 10 }, (_, index) => ({
+    const scanLimit = Math.max(100, Number(comprehension.expectedQuestionCount) || 0);
+    const ranges = Array.from({ length: Math.ceil(scanLimit / 10) }, (_, index) => ({
       start: index * 10 + 1,
-      end: (index + 1) * 10,
+      end: Math.min((index + 1) * 10, scanLimit),
     }));
     const recovered = [...(comprehension.examQuestions || [])];
     for (const range of ranges) {
