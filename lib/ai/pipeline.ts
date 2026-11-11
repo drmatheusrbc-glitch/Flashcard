@@ -284,7 +284,18 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
   // O texto integral é separado pela numeração impressa e cada questão vira uma unidade.
   if (isExam && input.examPdfBase64) {
     const extractedExam = await extractExamFromPdf(input.examPdfBase64);
-    const extractedQuestions = extractedExam.questions;
+    const separateAnswerKey = input.answerKeyPdfBase64
+      ? await extractExamFromPdf(input.answerKeyPdfBase64)
+      : undefined;
+    const extractedQuestions = extractedExam.questions.map((question) => ({
+      ...question,
+      officialAnswer: separateAnswerKey?.answerKey[question.questionNumber]
+        ?? extractedExam.answerKey[question.questionNumber]
+        ?? question.officialAnswer,
+    }));
+    const answerKeyCount = extractedQuestions.filter((question) =>
+      question.officialAnswer !== 'Não identificado no gabarito do PDF'
+    ).length;
     if (extractedQuestions.length === 0) {
       throw new Error('Não foi possível extrair texto das questões do PDF. O arquivo pode ser digitalizado como imagem; envie uma versão com OCR ou texto selecionável.');
     }
@@ -315,7 +326,7 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
       stageIndex: 1,
       totalStages: 8,
       label: 'Questões extraídas e conferidas',
-      detail: `${extractedQuestions.length}/${requiredCount} questões extraídas de ${extractedExam.pageCount} páginas. Gabarito localizado para ${extractedExam.answerKeyFound} questão(ões). Cada questão será analisada individualmente.`,
+      detail: `${extractedQuestions.length}/${requiredCount} questões extraídas de ${extractedExam.pageCount} páginas. Gabarito localizado para ${answerKeyCount} questão(ões). Cada questão será analisada individualmente.`,
     });
   }
 
