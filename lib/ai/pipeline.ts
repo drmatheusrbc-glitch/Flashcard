@@ -247,7 +247,7 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
               },
             },
           },
-          required: ['suggestedTitle', 'detectedDomain', 'structuralSummary', 'themes'],
+          required: ['suggestedTitle', 'detectedDomain', 'structuralSummary', 'themes', ...(isExam ? ['examQuestions'] : [])],
         },
       },
     });
@@ -388,27 +388,37 @@ Retorne APENAS um JSON válido com a estrutura:
     detail: `Aplicando Princípio da Informação Mínima, Ancoragem de Contexto e Cloze Deletion (meta: ~${targetCount} cartões).`,
   });
 
-  // For large targets (>= 45), generate in 2 theme-partitioned batches to preserve depth and avoid truncation
-  const batches: Array<{ themes: typeof comprehension.themes; count: number; label: string }> = [];
-  if (targetCount >= 45 && comprehension.themes.length >= 2) {
+  // Em provas, a unidade de trabalho é a questão — nunca apenas o tema geral.
+  // Lotes pequenos reduzem omissões e obrigam o modelo a explicitar o raciocínio testado.
+  type GenerationBatch = {
+    themes: typeof comprehension.themes;
+    questions: NonNullable<ComprehensionResult['examQuestions']>;
+    count: number;
+    label: string;
+  };
+  const batches: GenerationBatch[] = [];
+  if (isExam) {
+    const questions = comprehension.examQuestions || [];
+    if (questions.length === 0) {
+      throw new Error('Não foi possível identificar as questões da prova com segurança. A geração foi interrompida para evitar um baralho incompleto. Tente um PDF com melhor resolução ou páginas separadas.');
+    }
+    const questionsPerBatch = 5;
+    for (let i = 0; i < questions.length; i += questionsPerBatch) {
+      const group = questions.slice(i, i + questionsPerBatch);
+      batches.push({
+        themes: comprehension.themes,
+        questions: group,
+        count: Math.max(group.length, Math.round((targetCount * group.length) / questions.length)),
+        label: `Questões ${group[0].questionNumber}–${group[group.length - 1].questionNumber}`,
+      });
+    }
+  } else if (targetCount >= 45 && comprehension.themes.length >= 2) {
     const mid = Math.ceil(comprehension.themes.length / 2);
     const firstHalfCount = Math.round(targetCount / 2);
-    batches.push({
-      themes: comprehension.themes.slice(0, mid),
-      count: firstHalfCount,
-      label: 'Lote 1/2',
-    });
-    batches.push({
-      themes: comprehension.themes.slice(mid),
-      count: targetCount - firstHalfCount,
-      label: 'Lote 2/2',
-    });
+    batches.push({ themes: comprehension.themes.slice(0, mid), questions: [], count: firstHalfCount, label: 'Lote 1/2' });
+    batches.push({ themes: comprehension.themes.slice(mid), questions: [], count: targetCount - firstHalfCount, label: 'Lote 2/2' });
   } else {
-    batches.push({
-      themes: comprehension.themes,
-      count: targetCount,
-      label: 'Lote único',
-    });
+    batches.push({ themes: comprehension.themes, questions: [], count: targetCount, label: 'Lote único' });
   }
 
   const hasImage = Boolean(input.imageBase64 && input.imageMimeType);
@@ -441,12 +451,21 @@ ${
     : ''
 }
 
-Em modo prova, a lista de questões identificadas deve ser tratada como inventário obrigatório. Para cada questão relevante, produza pelo menos um cartão e preencha questionNumber com o número original. Produza um segundo cartão somente quando houver outro conhecimento independente e útil. Não gere apenas cartões sobre os temas gerais e não ignore questões do inventário. Questões redundantes podem ser consolidadas, mas não descarte conhecimentos exclusivos.
+MODO PROVA — RACIOCÍNIO CENTRAL, NÃO SUPERFICIAL:
+- Este lote contém um inventário fechado de questões. Gere cartões para CADA questão listada e associe o número original em questionNumber.
+- Para cada questão, identifique primeiro: (1) qual decisão/conhecimento a banca realmente está testando; (2) qual dado do enunciado é decisivo; (3) qual mecanismo, critério ou princípio explica a resposta; (4) por que a alternativa/gabarito correto prevalece e qual erro conceitual torna os distratores plausíveis.
+- O cartão deve ensinar o motivo central que resolve a questão, não apenas repetir o tema, a definição ou a alternativa correta.
+- Crie normalmente 1 cartão por questão; crie 2–3 quando houver conhecimentos independentes (ex.: diagnóstico + mecanismo/conduta, ou critério + exceção). Não fragmente artificialmente.
+- Se o gabarito estiver disponível, confronte-o com o enunciado. Não invente justificativa ausente; sinalize incerteza no cartão quando necessário.
+- Nunca omita questão por parecer fácil. Não substitua questões específicas por cartões genéricos sobre o tema.
 
-Temas deste lote (${batch.label}):
+Inventário obrigatório deste lote (${batch.label}):
+${batch.questions.map((q) => `Q${q.questionNumber} | Tema: ${q.topic} | Enunciado: ${q.stemSummary} | Gabarito: ${q.officialAnswer} | CONCEITO CENTRAL: ${q.coreConcept} | PEGADINHA: ${q.commonTrap || 'não identificada'}`).join('\n') || 'Modo não-prova: sem inventário de questões.'}
+
+Temas de apoio:
 ${batch.themes.map((t) => `- ${t.theme} (peso ${t.estimatedWeight}): ${t.subtopics.join(', ')}`).join('\n')}
 
-Quantidade alvo para este lote: aproximadamente ${batch.count} flashcards de altíssima qualidade (qualidade > quantidade; não crie cartões redundantes ou triviais).
+Meta orientativa deste lote: ${batch.count} cartões. Em modo prova, a cobertura integral do inventário prevalece sobre a meta numérica; não reduza cartões para caber em uma contagem arbitrária.
 Idioma: ${config.language}.
 Profundidade: ${config.depth}.
 
@@ -519,7 +538,7 @@ ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
                       },
                     },
                   },
-                  required: ['front', 'back', 'modality', 'importance', 'subject', 'reference'],
+                  required: ['front', 'back', 'modality', 'importance', 'subject', 'reference', ...(isExam ? ['questionNumber'] : [])],
                 },
               },
             },
@@ -601,9 +620,22 @@ ${rawCards.map((c, idx) => `[${idx}] (${c.modality} | ${c.importance} | ${c.subj
         refinementMap.set(r.index, r);
       }
 
-      const validIndices = qcData.approvedIndices.filter((i) => i >= 0 && i < rawCards.length);
-      if (validIndices.length > 0) {
-        auditedCards = validIndices.map((idx) => {
+      const validIndices = qcData.approvedIndices.filter((i) => Number.isInteger(i) && i >= 0 && i < rawCards.length);
+      // A auditoria pode remover duplicatas, mas não pode apagar a única representação de uma questão.
+      const protectedIndices = new Set(validIndices);
+      if (isExam) {
+        const sourceNumbers = new Set((comprehension.examQuestions || []).map((q) => q.questionNumber));
+        for (const number of sourceNumbers) {
+          const candidates = rawCards.map((card, index) => ({ card, index }))
+            .filter(({ card }) => card.questionNumber === number);
+          if (candidates.length > 0 && !candidates.some(({ index }) => protectedIndices.has(index))) {
+            protectedIndices.add(candidates[0].index);
+          }
+        }
+      }
+      const finalIndices = [...protectedIndices].sort((a, b) => a - b);
+      if (finalIndices.length > 0) {
+        auditedCards = finalIndices.map((idx) => {
           const card = rawCards[idx];
           const ref = refinementMap.get(idx);
           return ref ? { ...card, front: ref.front, back: ref.back } : card;
