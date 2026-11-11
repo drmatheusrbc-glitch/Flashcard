@@ -497,8 +497,13 @@ Retorne APENAS um JSON válido com a estrutura:
   const hasImage = Boolean(input.imageBase64 && input.imageMimeType);
 
   const rawCards: RawGeneratedCard[] = [];
-  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-    const batch = batches[batchIndex];
+  const batchResults: RawGeneratedCard[][] = new Array(batches.length);
+  let nextBatchIndex = 0;
+  const processBatch = async () => {
+    while (true) {
+      const batchIndex = nextBatchIndex++;
+      if (batchIndex >= batches.length) return;
+      const batch = batches[batchIndex];
     if (isExam) {
       onProgress({
         stage: 'elaboracao',
@@ -631,10 +636,18 @@ ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
       });
 
     const parsed = safeParseJson<{ cards: RawGeneratedCard[] }>(genRes.text, { cards: [] });
-    if (Array.isArray(parsed.cards)) {
-      rawCards.push(...parsed.cards);
+      if (Array.isArray(parsed.cards)) {
+        batchResults[batchIndex] = parsed.cards;
+      } else {
+        batchResults[batchIndex] = [];
+      }
     }
-  }
+  };
+  // Concorrência limitada para processar provas longas sem ultrapassar o tempo
+  // de execução por fazer 100 chamadas estritamente sequenciais.
+  const workerCount = isExam ? Math.min(4, batches.length) : batches.length;
+  await Promise.all(Array.from({ length: workerCount }, () => processBatch()));
+  rawCards.push(...batchResults.flat());
 
   // Segunda passagem de cobertura: se algum número do inventário não recebeu cartão,
   // gera-se um cartão direcionado antes da auditoria final.
