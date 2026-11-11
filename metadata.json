@@ -1,0 +1,6 @@
+{
+  "name": "Cardexis — Criação Inteligente de Flashcards",
+  "description": "Plataforma educacional com inteligência artificial para criação de flashcards de alta precisão científica, Cloze Deletion, Image Occlusion e exportação nativa para Anki (.apkg).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
