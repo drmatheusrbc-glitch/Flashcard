@@ -517,7 +517,7 @@ URLs reais encontradas na busca:
 ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
 
     const genRes = await generateWithFallback({
-        contents: { parts: buildContentParts(input, elaborationPrompt) },
+        contents: elaborationPrompt,
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
           responseMimeType: 'application/json',
@@ -610,7 +610,7 @@ ${repairBatch.map((q) => `Q${q.questionNumber} | ${q.topic} | Enunciado: ${q.ste
 Retorne JSON com cards. Cada cartão deve conter front, back, modality, importance, subject, subtopic, contextAnchor, isVignette, questionNumber e reference.`;
       try {
         const repairRes = await generateWithFallback({
-          contents: { parts: buildContentParts(input, repairPrompt) },
+          contents: repairPrompt,
           config: {
             thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
             responseMimeType: 'application/json',
