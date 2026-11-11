@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-display: var(--font-display), "Plus Jakarta Sans", system-ui, sans-serif;
-  --font-sans: var(--font-sans), "DM Sans", system-ui, sans-serif;
-  --font-mono: var(--font-mono), "JetBrains Mono", monospace;
+  --font-display: Arial, Helvetica, system-ui, sans-serif;
+  --font-sans: Arial, Helvetica, system-ui, sans-serif;
+  --font-mono: "Courier New", Courier, monospace;
 }
 
 @layer base {
