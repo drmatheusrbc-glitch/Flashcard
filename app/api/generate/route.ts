@@ -66,9 +66,9 @@ export async function POST(req: Request) {
 
     for (const pathname of Object.values(files)) if (pathname) uploadedPaths.push(pathname);
 
-    if (config.inputMode === 'exam' && !files.examPdf) return Response.json({ error: 'Na modalidade Prova, anexe ao menos o PDF da prova.' }, { status: 400 });
-    if (config.inputMode === 'summary' && !files.summaryPdf) return Response.json({ error: 'Na modalidade Resumo/Apostila, anexe o arquivo PDF do material.' }, { status: 400 });
-    if (config.inputMode === 'text' && textContent.trim().length < 20 && !files.imageFile) return Response.json({ error: 'Cole um texto com pelo menos 20 caracteres ou anexe uma imagem.' }, { status: 400 });
+    if (config.inputMode === 'exam' && !files.examPdf) throw new Error('Na modalidade Prova, anexe ao menos o PDF da prova.');
+    if (config.inputMode === 'summary' && !files.summaryPdf) throw new Error('Na modalidade Resumo/Apostila, anexe o arquivo PDF do material.');
+    if (config.inputMode === 'text' && textContent.trim().length < 20 && !files.imageFile) throw new Error('Cole um texto com pelo menos 20 caracteres ou anexe uma imagem.');
 
     const [examPdfBase64, answerKeyPdfBase64, summaryPdfBase64, imageBase64] = await Promise.all([
       files.examPdf ? blobToBase64(files.examPdf, MAX_PDF_BYTES, ['application/pdf'], 'PDF da Prova') : undefined,
