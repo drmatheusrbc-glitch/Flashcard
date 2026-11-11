@@ -166,8 +166,18 @@ export default function HomePage() {
       });
 
       if (!response.ok || !response.body) {
-        const errData = await response.json().catch(() => ({ error: 'Falha ao iniciar geração.' }));
-        throw new Error(errData.error || 'Falha ao iniciar geração.');
+        const responseText = await response.text().catch(() => '');
+        let serverMessage = '';
+        if (responseText) {
+          try {
+            const errData = JSON.parse(responseText) as { error?: string; message?: string };
+            serverMessage = errData.error || errData.message || '';
+          } catch {
+            serverMessage = responseText.replace(/\\s+/g, ' ').slice(0, 600);
+          }
+        }
+        const statusInfo = `HTTP ${response.status}${response.statusText ? ` — ${response.statusText}` : ''}`;
+        throw new Error(serverMessage ? `${statusInfo}: ${serverMessage}` : `${statusInfo}: O servidor não retornou detalhes. Verifique os logs da função na Vercel.`);
       }
 
       const reader = response.body.getReader();
