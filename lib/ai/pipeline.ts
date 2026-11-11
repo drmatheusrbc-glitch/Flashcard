@@ -259,6 +259,47 @@ Liste também os fatos-chave, diretrizes, critérios, doses ou afirmações cien
     themes: [{ theme: 'Conteúdo Principal', subtopics: [], estimatedWeight: 'alto', keyFactsToVerify: [] }],
   });
 
+  // Segunda leitura independente em faixas numéricas. A leitura única do PDF
+  // costuma truncar inventários longos; estas passagens recuperam questões omitidas.
+  if (isExam && input.examPdfBase64) {
+    const ranges = [
+      { start: 1, end: 25 },
+      { start: 26, end: 50 },
+      { start: 51, end: 75 },
+      { start: 76, end: 100 },
+    ];
+    const recovered = [...(comprehension.examQuestions || [])];
+    for (const range of ranges) {
+      const inventoryPrompt = `Faça uma varredura EXCLUSIVA no PDF da prova para localizar questões numeradas de ${range.start} a ${range.end}, inclusive. Não resuma a prova inteira. Extraia todas as questões legíveis desse intervalo, mesmo que estejam em páginas diferentes. Preserve o número original. Não invente questões e não inclua números fora do intervalo. Para cada questão retorne questionNumber, topic, stemSummary, officialAnswer, coreConcept e commonTrap. Se o gabarito não estiver disponível, officialAnswer deve ser "Não identificado no material". Retorne JSON válido: {"examQuestions":[...]}. Idioma: ${config.language}.`;
+      try {
+        const scan = await generateWithFallback({
+          contents: { parts: buildContentParts(input, inventoryPrompt) },
+          config: { responseMimeType: 'application/json', thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } },
+        });
+        const parsed = safeParseJson<{ examQuestions?: ComprehensionResult['examQuestions'] }>(
+          scan.text,
+          { examQuestions: [] }
+        );
+        for (const question of parsed.examQuestions || []) {
+          if (!question.questionNumber) continue;
+          const key = question.questionNumber.trim().replace(/^0+/, '').toLowerCase();
+          const existing = recovered.find((item) =>
+            item.questionNumber.trim().replace(/^0+/, '').toLowerCase() === key
+          );
+          if (!existing) recovered.push(question);
+          else if (existing.stemSummary.length < question.stemSummary.length) Object.assign(existing, question);
+        }
+      } catch (error) {
+        console.warn(`Falha na varredura complementar das questões ${range.start}–${range.end}:`, error);
+      }
+    }
+    recovered.sort((a, b) => {
+      const na = Number(a.questionNumber), nb = Number(b.questionNumber);
+      return Number.isFinite(na) && Number.isFinite(nb) ? na - nb : a.questionNumber.localeCompare(b.questionNumber, 'pt-BR');
+    });
+    comprehension.examQuestions = recovered;
+  }
+
   // =========================================================================
   // ETAPA 2 — MAPEAMENTO (emitido com os dados reais extraídos)
   // =========================================================================
