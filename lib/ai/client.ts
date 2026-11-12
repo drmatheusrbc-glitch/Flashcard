@@ -84,12 +84,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 function getRetryDelayMs(error: unknown, attempt: number, baseDelayMs: number): number {
   const message = error instanceof Error ? error.message : String(error);
-  const retryDelay = message.match(/retry(?:Delay|_delay)\\?["'\\s:=]+(\\d+(?:\\.\\d+)?)s/i);
-  const retryAfter = message.match(/retry-after[^\\d]*(\\d+(?:\\.\\d+)?)/i);
-  const providerDelay = retryDelay ? Number(retryDelay[1]) * 1000 : retryAfter ? Number(retryAfter[1]) * 1000 : 0;
+  const patterns = [
+    /retry\\s+in\\s+([\\d.]+)\\s*s/i,
+    /retryDelay["'\\s:=]+([\\d.]+)s/i,
+    /retry-after[^\\d]*([\\d.]+)/i,
+  ];
+  let providerDelay = 0;
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (match) {
+      providerDelay = Number(match[1]) * 1000;
+      if (providerDelay > 0) break;
+    }
+  }
   const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
-  const jitter = Math.floor(Math.random() * 700);
-  return Math.min(30000, Math.max(providerDelay, exponentialDelay) + jitter);
+  const jitter = Math.floor(Math.random() * 1000);
+  return Math.min(120000, Math.max(providerDelay, exponentialDelay) + jitter);
 }
 
 export async function withRetry<T>(
