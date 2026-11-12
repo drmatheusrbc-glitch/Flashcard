@@ -39,6 +39,18 @@ function extractAnswerKey(text: string): Map<number, string> {
 export async function extractExamFromPdf(base64: string): Promise<ExtractedExam> {
   // Carregamento tardio: evita que uma falha de inicialização do PDF.js derrube
   // a importação inteira da rota /api/generate antes do tratamento de erros.
+  // O runtime Node da Vercel não oferece DOMMatrix nativamente.
+  // O canvas nativo fornece as APIs gráficas exigidas pelo PDF.js.
+  const canvasRuntime = await import('@napi-rs/canvas');
+  const runtime = globalThis as typeof globalThis & {
+    DOMMatrix?: typeof canvasRuntime.DOMMatrix;
+    ImageData?: typeof canvasRuntime.ImageData;
+    Path2D?: typeof canvasRuntime.Path2D;
+  };
+  runtime.DOMMatrix ??= canvasRuntime.DOMMatrix;
+  runtime.ImageData ??= canvasRuntime.ImageData;
+  runtime.Path2D ??= canvasRuntime.Path2D;
+
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const bytes = Uint8Array.from(Buffer.from(base64, 'base64'));
   const loadingTask = getDocument({
