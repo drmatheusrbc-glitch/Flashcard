@@ -42,11 +42,10 @@ export async function extractExamFromPdf(base64: string): Promise<ExtractedExam>
   // O runtime Node da Vercel não oferece DOMMatrix nativamente.
   // O canvas nativo fornece as APIs gráficas exigidas pelo PDF.js.
   const canvasRuntime = await import('@napi-rs/canvas');
-  const runtime = globalThis as typeof globalThis & {
-    DOMMatrix?: typeof canvasRuntime.DOMMatrix;
-    ImageData?: typeof canvasRuntime.ImageData;
-    Path2D?: typeof canvasRuntime.Path2D;
-  };
+  // As tipagens DOM do TypeScript e as tipagens do canvas nativo
+  // divergem em alguns membros, embora as classes sejam compatíveis em runtime.
+  // Atribuímos as APIs ao global sem forçar uma equivalência de tipos incorreta.
+  const runtime = globalThis as unknown as Record<string, unknown>;
   runtime.DOMMatrix ??= canvasRuntime.DOMMatrix;
   runtime.ImageData ??= canvasRuntime.ImageData;
   runtime.Path2D ??= canvasRuntime.Path2D;
