@@ -89,7 +89,11 @@ export async function extractExamFromPdf(base64: string): Promise<ExtractedExam>
 
   const fullText = normalizePdfText(pageTexts.join('\n\n'));
   const answerKey = extractAnswerKey(fullText);
-  const questionMatches = [...fullText.matchAll(/\bQUEST(?:Ã|A)O\s*(\d{1,3})\s*\./gi)];
+  // As provas variam na formatação do cabeçalho: "QUESTÃO 01",
+  // "QUESTÃO 1.", "QUESTAO 1:" etc. O ponto final não é obrigatório.
+  // Normalizar Unicode também evita falhas quando o acento vem decomposto.
+  const searchableText = fullText.normalize('NFC');
+  const questionMatches = [...searchableText.matchAll(/\\bQUEST(?:ÃO|AO)\\s*0*(\\d{1,3})(?=\\s|[.:º°-]|$)/giu)];
   const questions: ExtractedExamQuestion[] = [];
 
   for (let index = 0; index < questionMatches.length; index++) {
@@ -102,7 +106,7 @@ export async function extractExamFromPdf(base64: string): Promise<ExtractedExam>
       : fullText.search(/\bGABARITO\b/i) >= 0
         ? fullText.search(/\bGABARITO\b/i)
         : fullText.length;
-    const questionText = normalizePdfText(fullText.slice(start, end));
+    const questionText = normalizePdfText(searchableText.slice(start, end));
     if (questionText.length < 20) continue;
     questions.push({
       questionNumber: String(number),
