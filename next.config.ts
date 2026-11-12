@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
   // PDF.js e @napi-rs/canvas precisam ser carregados no runtime Node.
   // Externalizar evita que o Webpack tente interpretar o binário nativo .node como JavaScript.
   serverExternalPackages: ['@napi-rs/canvas', 'pdfjs-dist'],
+  // Inclui o worker ESM do PDF.js no pacote serverless da Vercel.
+  outputFileTracingIncludes: {
+    '/*': ['./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'],
+  },
   transpilePackages: ['motion'],
   webpack: (config, {dev}) => {
     // HMR is disabled in AI Studio via DISABLE_HMR env var.
