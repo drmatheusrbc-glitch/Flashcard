@@ -1,5 +1,3 @@
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-
 export interface ExtractedExamQuestion {
   questionNumber: string;
   text: string;
@@ -39,6 +37,9 @@ function extractAnswerKey(text: string): Map<number, string> {
 }
 
 export async function extractExamFromPdf(base64: string): Promise<ExtractedExam> {
+  // Carregamento tardio: evita que uma falha de inicialização do PDF.js derrube
+  // a importação inteira da rota /api/generate antes do tratamento de erros.
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const bytes = Uint8Array.from(Buffer.from(base64, 'base64'));
   const loadingTask = getDocument({
     data: bytes,
