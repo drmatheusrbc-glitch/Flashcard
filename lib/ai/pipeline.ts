@@ -645,7 +645,7 @@ ${groundingUrls.map((u) => `- ${u.title}: ${u.uri}`).join('\n')}`;
   };
   // Concorrência limitada para processar provas longas sem ultrapassar o tempo
   // de execução por fazer 100 chamadas estritamente sequenciais.
-  const workerCount = isExam ? Math.min(4, batches.length) : batches.length;
+  const workerCount = isExam ? Math.min(2, batches.length) : batches.length;
   await Promise.all(Array.from({ length: workerCount }, () => processBatch()));
   rawCards.push(...batchResults.flat());
 
