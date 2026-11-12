@@ -82,10 +82,20 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function getRetryDelayMs(error: unknown, attempt: number, baseDelayMs: number): number {
+  const message = error instanceof Error ? error.message : String(error);
+  const retryDelay = message.match(/retry(?:Delay|_delay)\\?["'\\s:=]+(\\d+(?:\\.\\d+)?)s/i);
+  const retryAfter = message.match(/retry-after[^\\d]*(\\d+(?:\\.\\d+)?)/i);
+  const providerDelay = retryDelay ? Number(retryDelay[1]) * 1000 : retryAfter ? Number(retryAfter[1]) * 1000 : 0;
+  const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+  const jitter = Math.floor(Math.random() * 700);
+  return Math.min(30000, Math.max(providerDelay, exponentialDelay) + jitter);
+}
+
 export async function withRetry<T>(
   fn: () => Promise<T>,
   retries = 2,
-  delayMs = 1500
+  delayMs = 2000
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -93,16 +103,9 @@ export async function withRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error;
-      if (attempt < retries && isTransientError(error)) {
-        const jitter = Math.floor(Math.random() * 400);
-        await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1) + jitter));
-        continue;
-      }
-      if (attempt < retries && !isModelNotFoundError(error)) {
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        continue;
-      }
-      break;
+      if (attempt >= retries || isModelNotFoundError(error)) break;
+      if (!isTransientError(error)) break;
+      await new Promise((resolve) => setTimeout(resolve, getRetryDelayMs(error, attempt, delayMs)));
     }
   }
   throw lastError;
