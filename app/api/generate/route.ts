@@ -43,10 +43,10 @@ async function blobToBase64(pathname: string, maxBytes: number, allowedTypes: st
 }
 
 export async function POST(req: Request) {
-  const session = await getOrCreateSession();
   const uploadedPaths: string[] = [];
 
   try {
+    const session = await getOrCreateSession();
     const origin = req.headers.get('origin');
     const host = req.headers.get('host');
     if (origin && host && new URL(origin).host !== host) {
