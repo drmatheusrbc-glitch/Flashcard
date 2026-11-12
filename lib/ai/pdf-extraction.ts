@@ -43,7 +43,6 @@ export async function extractExamFromPdf(base64: string): Promise<ExtractedExam>
   const loadingTask = getDocument({
     data: bytes,
     useSystemFonts: true,
-    isEvalSupported: false,
     disableFontFace: true,
     verbosity: 0,
   });
