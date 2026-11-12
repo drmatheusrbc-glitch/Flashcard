@@ -140,8 +140,8 @@ export async function generateWithFallback(
             }),
             timeoutMs
           ),
-        isLastCandidate ? 1 : 0,
-        1200
+        isLastCandidate ? 1 : 2,
+        2000
       );
     } catch (error) {
       lastError = error;
